@@ -12,6 +12,7 @@ async function load() {
 }
 
 function onNewPost(row) {
+  // Agregamos el post nuevo arriba de todo
   posts.value = [row, ...posts.value]
 }
 
@@ -37,11 +38,11 @@ onUnmounted(() => {
 
 <template>
   <section class="container-page grid gap-4">
-    <h2
-      class="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-coffee-700 to-coffee-500"
+    <h1
+      class="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-coffee-700 to-coffee-500"
     >
-      Feed
-    </h2>
+      Muro
+    </h1>
 
     <PostForm />
 

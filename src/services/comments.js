@@ -1,8 +1,8 @@
 import { supabase } from './supabase'
 
-
-// Lista los comentarios de un post.
-
+/**
+ * Lista los comentarios de un post.
+ */
 export async function listComments(postId, limit = 50) {
   const { data, error } = await supabase
     .from('post_comments')
@@ -17,37 +17,51 @@ export async function listComments(postId, limit = 50) {
     .eq('post_id', postId)
     .order('created_at', { ascending: true })
     .limit(limit)
+
   if (error) throw error
   return data ?? []
 }
 
-
+/**
+ * Agrega un nuevo comentario.
+ */
 export async function addComment(postId, content) {
-  const { data: session } = await supabase.auth.getUser()
-  const u = session?.user
-  if (!u?.id) throw new Error('No hay sesión')
-  const text = String(content || '').trim()
-  if (!text) throw new Error('Comentario vacío')
+  // Obtenemos la sesión directamente de Supabase para asegurar autenticidad
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user?.id) throw new Error('Usuario no autenticado para comentar')
+
+  const commentText = String(content || '').trim()
+  if (!commentText) throw new Error('El comentario no puede estar vacío')
+
   const { error } = await supabase
     .from('post_comments')
-    .insert({ post_id: postId, user_id: u.id, content: text })
+    .insert({ 
+      post_id: postId, 
+      user_id: user.id, 
+      content: commentText 
+    })
+
   if (error) throw error
 }
 
+/**
+ * Helper interno para enriquecer comentarios en tiempo real con datos del perfil.
+ */
+async function enrichComment(commentRow) {
+  if (!commentRow?.user_id) return commentRow
 
-async function enrichComment(row) {
-  if (!row?.user_id) return row
   const { data, error } = await supabase
     .from('user_profiles')
     .select('display_name, email')
-    .eq('id', row.user_id)
+    .eq('id', commentRow.user_id)
     .maybeSingle()
-  if (!error && data) {
-    row.user_profiles = data
-  }
-  return row
-}
 
+  if (!error && data) {
+    commentRow.user_profiles = data
+  }
+  return commentRow
+}
 
 export function subscribeToNewComments(postId, onInsert) {
   const channel = supabase
@@ -56,10 +70,21 @@ export function subscribeToNewComments(postId, onInsert) {
       'postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'post_comments', filter: `post_id=eq.${postId}` },
       async payload => {
-        const enriched = await enrichComment(payload.new)
-        onInsert?.(enriched)
+        // Enriquecemos el comentario nuevo con el perfil antes de enviarlo a la UI
+        const enrichedComment = await enrichComment(payload.new)
+        onInsert?.(enrichedComment)
       }
     )
     .subscribe()
+
   return () => supabase.removeChannel(channel)
+}
+
+export async function deleteComment(commentId) {
+  const { error } = await supabase
+    .from('post_comments')
+    .delete()
+    .eq('id', commentId)
+  
+  if (error) throw error
 }

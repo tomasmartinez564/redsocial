@@ -1,47 +1,61 @@
-
-// Servicio para leer/actualizar perfiles de usuario
-
 import { supabase } from './supabase'
 import { getCurrentUser } from './auth'
 
-// Obtiene un perfil por ID (UUID de auth.users).
-
-export async function getProfileById(id) {
+/**
+ * Obtiene un perfil público por ID.
+ */
+export async function getProfileById(userId) {
   const { data, error } = await supabase
     .from('user_profiles')
     .select('id, email, display_name, bio, cafe_favorito, avatar_path, updated_at')
-    .eq('id', id)
-    .limit(1)
-    .maybeSingle()
+    .eq('id', userId)
+    .maybeSingle() // Retorna null si no existe, en vez de lanzar error
 
   if (error) throw error
   return data
 }
 
-// Obtiene el perfil del usuario autenticado.
-
+/**
+ * Obtiene el perfil del usuario autenticado actualmente.
+ */
 export async function getMyProfile() {
-  const u = getCurrentUser()
-  if (!u.id) return null
-  return getProfileById(u.id)
+  const currentUser = getCurrentUser()
+  if (!currentUser?.id) return null
+  
+  return getProfileById(currentUser.id)
 }
 
+/**
+ * Crea el perfil inicial de un usuario (generalmente al registrarse).
+ */
+export async function createUserProfile(userId, email) {
+  const { error } = await supabase
+    .from('user_profiles')
+    .insert({ id: userId, email })
 
-// Actualiza el perfil del usuario logueado.
+  if (error) {
+    // Advertencia no bloqueante, útil si ya existen triggers en la BD
+    console.warn('[user-profiles] Aviso al crear perfil:', error.message)
+  }
+}
 
-export async function updateMyProfile(patch) {
-  const u = getCurrentUser()
-  if (!u.id) throw new Error('No hay sesión')
+/**
+ * Actualiza los datos del perfil del usuario logueado.
+ * @param {Object} updates - Objeto con los campos a actualizar
+ */
+export async function updateMyProfile(updates) {
+  const currentUser = getCurrentUser()
+  if (!currentUser?.id) throw new Error('No hay sesión activa')
 
   const { data, error } = await supabase
     .from('user_profiles')
     .update({
-      ...patch,
+      ...updates,
       updated_at: new Date().toISOString()
     })
-    .eq('id', u.id)
-    .select('id, email, display_name, bio, cafe_favorito, avatar_path, updated_at')
-    .maybeSingle()
+    .eq('id', currentUser.id)
+    .select()
+    .single()
 
   if (error) throw error
   return data
